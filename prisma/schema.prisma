@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Case {
+  id        String   @id @default(uuid())
+  packetId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  persons       Person[]
+  events        Event[]
+  relationships Relationship[]
+  sources       Source[]
+  citations     Citation[]
+
+  @@map("cases")
+}
+
+model Person {
+  id          String  @id @default(uuid())
+  caseId      String
+  primaryName String
+  gender      String?
+  birthDate   String?
+  birthPlace  String?
+  deathDate   String?
+  deathPlace  String?
+
+  case                Case           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  eventParticipants   EventParticipant[]
+  relationshipsFrom   Relationship[] @relation("RelationshipFrom")
+  relationshipsTo     Relationship[] @relation("RelationshipTo")
+
+  @@map("persons")
+}
+
+model Event {
+  id           String   @id @default(uuid())
+  caseId       String
+  type         String
+  date         String?
+  place        String?
+
+  case         Case               @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  participants EventParticipant[]
+
+  @@map("events")
+}
+
+model EventParticipant {
+  id       String @id @default(uuid())
+  eventId  String
+  personId String
+  role     String
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("event_participants")
+}
+
+model Relationship {
+  id     String @id @default(uuid())
+  caseId String
+  type   String
+  fromId String
+  toId   String
+
+  case Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  from Person @relation("RelationshipFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to   Person @relation("RelationshipTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@map("relationships")
+}
+
+model Source {
+  id       String @id @default(uuid())
+  caseId   String
+  repo     String
+  title    String
+  packetId String
+
+  case      Case       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  citations Citation[]
+
+  @@map("sources")
+}
+
+model Citation {
+  id         String @id @default(uuid())
+  caseId     String
+  sourceId   String
+  page       Int
+  field      String
+  bboxX      Int
+  bboxY      Int
+  bboxW      Int
+  bboxH      Int
+  confidence Float
+
+  case   Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@map("citations")
+}

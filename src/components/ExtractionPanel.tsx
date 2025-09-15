@@ -1,319 +1,234 @@
-import React, { useState } from 'react';
-import { Bot, Download, Check, AlertCircle, Eye } from 'lucide-react';
-import { useData } from '../contexts/DataContext';
+'use client'
 
-export const ExtractionPanel: React.FC = () => {
-  const { currentPacket, extractedData, setExtractedData } = useData();
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
-  const [editableData, setEditableData] = useState<any>(null);
+import { useState } from 'react'
+import { J294Type } from '@/lib/schema'
+
+interface PacketImage {
+  page: number
+  url: string
+}
+
+interface ExtractionPanelProps {
+  packetId: string
+  images: PacketImage[]
+  extractedData: J294Type | null
+  onExtractedData: (data: J294Type | null) => void
+  caseId: string | null
+  onCaseId: (id: string | null) => void
+}
+
+export default function ExtractionPanel({
+  packetId,
+  images,
+  extractedData,
+  onExtractedData,
+  caseId,
+  onCaseId
+}: ExtractionPanelProps) {
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [isApproving, setIsApproving] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handleExtract = async () => {
-    if (!currentPacket) return;
-    
-    setIsExtracting(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const mockExtraction = {
-      formType: 'J294' as const,
-      deceased: {
-        fullName: 'Esaias Engelbertus Meyer',
-        deathDate: '1960-04-09',
-        deathPlace: 'Pretoria',
-        residence: 'Plaas Nooitgedacht, distrik Bronkhorstspruit',
-        maritalStatus: 'getroud',
-        spouse: 'Anna Helena Meyer (gebore Erasmus)'
-      },
-      children: [
-        { name: 'Lourens Abraham Meyer', status: 'meerderjarig' },
-        { name: 'Helena Elizabeth (gebore Meyer)', spouse: 'Aart Booman' },
-        { name: 'Daniel Jacobus Elardus Meyer', status: 'meerderjarig' },
-        { name: 'Esaias Engelbertus Meyer', birth: '1943-07-25', status: 'minderjarig' },
-        { name: 'Johannes Erasmus Meyer', birth: '1950-10-25', status: 'minderjarig' }
-      ],
-      citations: [
-        { sourceId: 'fs:img:1', page: 1, field: 'deceased.fullName', bbox: [123, 456, 210, 34] as [number, number, number, number], confidence: 0.99 },
-        { sourceId: 'fs:img:1', page: 1, field: 'deceased.deathDate', bbox: [400, 456, 120, 28] as [number, number, number, number], confidence: 0.95 },
-        { sourceId: 'fs:img:1', page: 1, field: 'deceased.deathPlace', bbox: [550, 456, 100, 28] as [number, number, number, number], confidence: 0.92 },
-        { sourceId: 'fs:img:2', page: 2, field: 'children[0].name', bbox: [100, 200, 180, 25] as [number, number, number, number], confidence: 0.88 },
-        { sourceId: 'fs:img:2', page: 2, field: 'children[1].name', bbox: [100, 240, 200, 25] as [number, number, number, number], confidence: 0.76 }
-      ]
-    };
-    
-    setExtractedData(mockExtraction);
-    setEditableData(mockExtraction);
-    setIsExtracting(false);
-  };
+    setIsExtracting(true)
+    try {
+      const response = await fetch('/api/extract/j294', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          packetId,
+          pages: images.map(img => img.page)
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        onExtractedData(data)
+      }
+    } catch (error) {
+      console.error('Extraction failed:', error)
+    } finally {
+      setIsExtracting(false)
+    }
+  }
 
   const handleApprove = async () => {
-    if (!editableData) return;
-    
-    setIsApproving(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setIsApproving(false);
-    
-    // Show success message
-    alert('Data approved and saved to the graph!');
-  };
+    if (!extractedData) return
 
-  const handleExport = () => {
-    if (!extractedData) return;
-    
-    // Simulate export
-    const exportData = {
-      case: extractedData,
-      metadata: {
-        packetId: currentPacket?.id,
-        mhg: currentPacket?.mhg,
-        exportedAt: new Date().toISOString(),
-        exportedBy: 'researcher@example.com'
+    setIsApproving(true)
+    try {
+      const response = await fetch('/api/review/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          packetId,
+          extractedData
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        onCaseId(data.caseId)
       }
-    };
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `provpack_${currentPacket?.mhg?.replace('/', '_')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+    } catch (error) {
+      console.error('Approval failed:', error)
+    } finally {
+      setIsApproving(false)
+    }
+  }
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return 'text-green-600 bg-green-50';
-    if (confidence >= 0.7) return 'text-yellow-600 bg-yellow-50';
-    return 'text-red-600 bg-red-50';
-  };
+  const handleExport = async () => {
+    if (!caseId) return
 
-  const getFieldConfidence = (field: string) => {
-    const citation = extractedData?.citations.find(c => c.field === field);
-    return citation?.confidence ?? 0;
-  };
+    setIsExporting(true)
+    try {
+      const response = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseId })
+      })
 
-  if (!currentPacket) {
-    return (
-      <div className="h-full flex items-center justify-center p-4">
-        <p className="text-gray-500 text-sm">No packet loaded</p>
-      </div>
-    );
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `provpack_${packetId.replace(/[^a-zA-Z0-9]/g, '_')}.zip`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      console.error('Export failed:', error)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="bg-white rounded-lg border border-gray-200 h-full flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-medium text-gray-900">Form Extraction</h3>
-          <Bot className="w-5 h-5 text-blue-600" />
-        </div>
+      <div className="border-b border-gray-200 p-4">
+        <h3 className="font-medium text-gray-900 mb-4">J294 Extraction</h3>
         
-        {!extractedData ? (
+        <div className="space-y-2">
           <button
             onClick={handleExtract}
             disabled={isExtracting}
-            className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isExtracting ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Extracting...</span>
-              </>
-            ) : (
-              <>
-                <Bot className="w-4 h-4" />
-                <span>Extract J294</span>
-              </>
-            )}
+            {isExtracting ? 'Extracting...' : 'Extract J294'}
           </button>
-        ) : (
-          <div className="flex space-x-2">
+
+          {extractedData && !caseId && (
             <button
               onClick={handleApprove}
               disabled={isApproving}
-              className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+              className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isApproving ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Approving...</span>
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Approve</span>
-                </>
-              )}
+              {isApproving ? 'Approving...' : 'Approve'}
             </button>
-            
+          )}
+
+          {caseId && (
             <button
               onClick={handleExport}
-              className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              title="Export Provenance"
+              disabled={isExporting}
+              className="w-full bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Download className="w-4 h-4" />
+              {isExporting ? 'Exporting...' : 'Export Provpack'}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Extraction Results */}
-      {extractedData && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Deceased Information */}
-          <div className="space-y-3">
-            <h4 className="font-medium text-gray-900 text-sm">Deceased</h4>
-            
-            {Object.entries(extractedData.deceased).map(([key, value]) => {
-              const confidence = getFieldConfidence(`deceased.${key}`);
-              return (
-                <div key={key} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-gray-600 capitalize">
-                      {key.replace(/([A-Z])/g, ' $1')}
-                    </label>
-                    {confidence > 0 && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${getConfidenceColor(confidence)}`}>
-                        {Math.round(confidence * 100)}%
-                      </span>
+      {/* Content */}
+      <div className="flex-1 p-4 overflow-y-auto">
+        {!extractedData ? (
+          <div className="text-center text-gray-500 py-8">
+            <p>Click "Extract J294" to analyze the document pages</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Deceased */}
+            <div>
+              <h4 className="font-medium text-gray-900 mb-3">Deceased Person</h4>
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="font-medium">Name:</span> {extractedData.deceased.fullName}
+                </div>
+                <div>
+                  <span className="font-medium">Death Date:</span> {extractedData.deceased.deathDate}
+                </div>
+                <div>
+                  <span className="font-medium">Death Place:</span> {extractedData.deceased.deathPlace}
+                </div>
+                {extractedData.deceased.residence && (
+                  <div>
+                    <span className="font-medium">Residence:</span> {extractedData.deceased.residence}
+                  </div>
+                )}
+                <div>
+                  <span className="font-medium">Marital Status:</span> {extractedData.deceased.maritalStatus}
+                </div>
+                {extractedData.deceased.spouse && (
+                  <div>
+                    <span className="font-medium">Spouse:</span> {extractedData.deceased.spouse}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Children */}
+            <div>
+              <h4 className="font-medium text-gray-900 mb-3">
+                Children ({extractedData.children.length})
+              </h4>
+              <div className="space-y-3">
+                {extractedData.children.map((child, index) => (
+                  <div key={index} className="p-3 bg-gray-50 rounded border">
+                    <div className="font-medium text-sm">{child.name}</div>
+                    {child.birth && (
+                      <div className="text-xs text-gray-600">Born: {child.birth}</div>
+                    )}
+                    {child.status && (
+                      <div className="text-xs text-gray-600">Status: {child.status}</div>
+                    )}
+                    {child.spouse && (
+                      <div className="text-xs text-gray-600">Spouse: {child.spouse}</div>
                     )}
                   </div>
-                  <input
-                    type="text"
-                    value={value || ''}
-                    onChange={(e) => setEditableData({
-                      ...editableData,
-                      deceased: { ...editableData.deceased, [key]: e.target.value }
-                    })}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-blue-500 focus:border-transparent ${
-                      confidence < 0.7 ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                    }`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Children */}
-          <div className="space-y-3">
-            <h4 className="font-medium text-gray-900 text-sm">Children</h4>
-            
-            {extractedData.children.map((child, index) => (
-              <div key={index} className="p-3 border border-gray-200 rounded-lg space-y-2">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-gray-600">Name</label>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${getConfidenceColor(getFieldConfidence(`children[${index}].name`))}`}>
-                      {Math.round(getFieldConfidence(`children[${index}].name`) * 100)}%
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    value={child.name}
-                    onChange={(e) => {
-                      const newChildren = [...editableData.children];
-                      newChildren[index] = { ...newChildren[index], name: e.target.value };
-                      setEditableData({ ...editableData, children: newChildren });
-                    }}
-                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                
-                {child.birth && (
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">Birth Date</label>
-                    <input
-                      type="text"
-                      value={child.birth}
-                      onChange={(e) => {
-                        const newChildren = [...editableData.children];
-                        newChildren[index] = { ...newChildren[index], birth: e.target.value };
-                        setEditableData({ ...editableData, children: newChildren });
-                      }}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                )}
-                
-                {child.status && (
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">Status</label>
-                    <input
-                      type="text"
-                      value={child.status}
-                      onChange={(e) => {
-                        const newChildren = [...editableData.children];
-                        newChildren[index] = { ...newChildren[index], status: e.target.value };
-                        setEditableData({ ...editableData, children: newChildren });
-                      }}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                )}
-                
-                {child.spouse && (
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">Spouse</label>
-                    <input
-                      type="text"
-                      value={child.spouse}
-                      onChange={(e) => {
-                        const newChildren = [...editableData.children];
-                        newChildren[index] = { ...newChildren[index], spouse: e.target.value };
-                        setEditableData({ ...editableData, children: newChildren });
-                      }}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Confidence Summary */}
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center space-x-2 mb-2">
-              <Eye className="w-4 h-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700">Confidence Summary</span>
-            </div>
-            
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center justify-between">
-                <span>High confidence (&gt;90%)</span>
-                <span className="text-green-600 font-medium">
-                  {extractedData.citations.filter(c => c.confidence >= 0.9).length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Medium confidence (70-89%)</span>
-                <span className="text-yellow-600 font-medium">
-                  {extractedData.citations.filter(c => c.confidence >= 0.7 && c.confidence < 0.9).length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Low confidence (&lt;70%)</span>
-                <span className="text-red-600 font-medium">
-                  {extractedData.citations.filter(c => c.confidence < 0.7).length}
-                </span>
+                ))}
               </div>
             </div>
-            
-            {extractedData.citations.filter(c => c.confidence < 0.7).length > 0 && (
-              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">
-                <div className="flex items-center space-x-1">
-                  <AlertCircle className="w-3 h-3 text-red-600" />
-                  <span className="text-red-600 font-medium">Review required</span>
+
+            {/* Citations */}
+            <div>
+              <h4 className="font-medium text-gray-900 mb-3">
+                Citations ({extractedData.citations.length})
+              </h4>
+              <div className="space-y-2">
+                {extractedData.citations.map((citation, index) => (
+                  <div key={index} className="text-xs p-2 bg-blue-50 rounded border">
+                    <div className="font-medium">{citation.field}</div>
+                    <div className="text-gray-600">
+                      Page {citation.page} • Confidence: {Math.round(citation.confidence * 100)}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {caseId && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded">
+                <div className="text-sm font-medium text-green-800">
+                  ✓ Approved and saved
                 </div>
-                <span className="text-red-600">Please verify fields with low confidence</span>
+                <div className="text-xs text-green-600">Case ID: {caseId}</div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  );
-};
+  )
+}
